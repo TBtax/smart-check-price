@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
         { id: 'tax-error-pane', name: 'คำนวณภาษีผิดพลาด', numRows: 7 }, 
         { id: 'price-unit-error-pane', name: 'ขายผิดราคาและหน่วยนับ', numRows: 15 } 
     ]; 
-    console.log("Smart Check System Initialized. Updated logic applied.");
+    console.log("Smart Check System Initialized. Final Update applied.");
     
     const sidebarLinks = document.querySelectorAll('.sidebar-link');
     const logoHomeBtn = document.getElementById('logoHomeBtn');
@@ -283,6 +283,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
             reader.onerror = (err) => reject("File reading error: " + err);
             reader.readAsArrayBuffer(file);
+        });
+    }
+
+    // =================================================================
+    // HELPER FUNCTIONS
+    // =================================================================
+    
+    // ฟังก์ชันช่วยค้นหาข้อมูลจาก Data Set โดยตรง (ค้นหาข้ามหน้าได้)
+    function getFilteredData(allData, tbodyId) {
+        const input = document.querySelector(`input[data-target-tbody="${tbodyId}"]`);
+        if (!input) return allData;
+        
+        const searchText = input.value.toLowerCase().trim();
+        if (!searchText) return allData;
+        
+        // แยกคำค้นหาด้วยช่องว่าง เพื่อให้ค้นหาได้หลายคำ
+        const terms = searchText.split(/\s+/).filter(t => t.length > 0);
+        
+        return allData.filter(item => {
+            // รวมข้อมูลทุก Field เป็นข้อความเดียวเพื่อค้นหา
+            const itemValues = Object.values(item).join(' ').toLowerCase();
+            // ต้องเจอทุกคำที่พิมพ์ (AND logic)
+            return terms.every(term => itemValues.includes(term));
         });
     }
 
@@ -579,10 +602,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 };
             });
 
-            const totalPages = Math.ceil(processedData.length / ITEMS_PER_PAGE);
+            // ** กรองข้อมูลสำหรับแท็บผิดพลาด (Data Filter) **
+            const filteredAddData = getFilteredData(processedData, 'additional-check-body');
+
+            const totalPages = Math.ceil(filteredAddData.length / ITEMS_PER_PAGE);
+            
+            // Reset to page 1 if search result is small
+            if (currentAddCheckPage > totalPages) currentAddCheckPage = 1;
+            if (totalPages > 0 && currentAddCheckPage === 0) currentAddCheckPage = 1;
+
             const startIndex = (currentAddCheckPage - 1) * ITEMS_PER_PAGE;
             const endIndex = startIndex + ITEMS_PER_PAGE;
-            const dataToRender = processedData.slice(startIndex, endIndex);
+            const dataToRender = filteredAddData.slice(startIndex, endIndex);
             
             renderPaginationControls('additional-check-pagination', currentAddCheckPage, totalPages, (newPage) => {
                 currentAddCheckPage = newPage;
@@ -600,13 +631,20 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // ** กรองข้อมูลหลัก (Data Filter) **
         const allData = combinedSalesData;
+        const filteredData = getFilteredData(allData, tbodyId);
         
         if (paneId === 'total-value-pane') {
-            const totalPages = Math.ceil(allData.length / ITEMS_PER_PAGE);
+            const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+            
+            // Reset to page 1 if search result is small
+            if (currentPage > totalPages) currentPage = 1; 
+            if (totalPages > 0 && currentPage === 0) currentPage = 1;
+
             const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
             const endIndex = startIndex + ITEMS_PER_PAGE;
-            const dataToRender = allData.slice(startIndex, endIndex);
+            const dataToRender = filteredData.slice(startIndex, endIndex);
             
             renderPaginationControls('pagination-container', currentPage, totalPages, (newPage) => {
                 currentPage = newPage;
@@ -614,18 +652,28 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             tbody.innerHTML = generateReportTableHtml(dataToRender, paneId);
         } else {
-             tbody.innerHTML = generateReportTableHtml([], paneId);
+             // สำหรับแท็บย่อยอื่น ๆ
+             tbody.innerHTML = generateReportTableHtml(filteredData, paneId);
         }
     }
 
     function renderRefPriceTable() {
         const tbody = document.getElementById('ref-price-body');
         if (!tbody) return;
-        const allData = referencePriceData;
-        const totalPages = Math.ceil(allData.length / ITEMS_PER_PAGE);
+        
+        // ** กรองข้อมูลโครงสร้างราคา (Data Filter) **
+        const filteredData = getFilteredData(referencePriceData, 'ref-price-body');
+
+        const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+        
+        // Reset to page 1 if search result is small
+        if (currentRefPage > totalPages) currentRefPage = 1;
+        if (totalPages > 0 && currentRefPage === 0) currentRefPage = 1;
+
         const startIndex = (currentRefPage - 1) * ITEMS_PER_PAGE;
         const endIndex = startIndex + ITEMS_PER_PAGE;
-        const dataToRender = allData.slice(startIndex, endIndex);
+        const dataToRender = filteredData.slice(startIndex, endIndex);
+        
         renderPaginationControls('ref-price-pagination', currentRefPage, totalPages, (newPage) => {
             currentRefPage = newPage;
             renderRefPriceTable();
@@ -637,21 +685,31 @@ document.addEventListener('DOMContentLoaded', function() {
         const searchInputs = document.querySelectorAll('.table-search-input');
         searchInputs.forEach(input => {
             input.addEventListener('keyup', function(e) {
-                const term = this.value.toLowerCase();
-                const targetTbodyId = this.getAttribute('data-target-tbody');
-                const tbody = document.getElementById(targetTbodyId);
-                if(tbody) {
-                    const rows = tbody.getElementsByTagName('tr');
-                    for(let row of rows) {
-                        if(row.cells.length > 1) {
-                            const text = row.textContent.toLowerCase();
-                            row.style.display = text.includes(term) ? '' : 'none';
-                        }
-                    }
+                const targetBody = this.getAttribute('data-target-tbody');
+                
+                // เมื่อพิมพ์ค้นหา ให้รีเซ็ตหน้าเป็นหน้า 1 แล้วสั่งวาดตารางใหม่ (Re-render with Filter)
+                if (targetBody === 'ref-price-body') {
+                    currentRefPage = 1;
+                    renderRefPriceTable();
+                } else if (targetBody === 'additional-check-body') {
+                    currentAddCheckPage = 1;
+                    renderReportTable('additional-check-pane');
+                } else if (targetBody === 'total-value-pane-body') {
+                    currentPage = 1;
+                    renderReportTable('total-value-pane');
+                } else {
+                    // สำหรับแท็บย่อยอื่นๆ
+                    const paneId = targetBody.replace('-body', ''); 
+                    renderReportTable(paneId);
                 }
             });
-            input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); this.dispatchEvent(new Event('keyup')); } });
+            
+            // ป้องกันการกด Enter แล้ว Refresh หน้า
+            input.addEventListener('keydown', function(e) { 
+                if (e.key === 'Enter') { e.preventDefault(); } 
+            });
         });
+        
         const searchBtns = document.querySelectorAll('.table-search-btn');
         searchBtns.forEach(btn => {
             btn.addEventListener('click', function() {
@@ -770,7 +828,23 @@ document.addEventListener('DOMContentLoaded', function() {
                     const [cashData, creditData] = await Promise.all([ readExcelFile(fileSalesCash, 'ขายสด'), readExcelFile(fileSalesCredit, 'ขายเชื่อ') ]);
                     const refData = await readExcelFile(fileRefPrice, 'ref_price');
                     let newCombinedData = [...cashData, ...creditData];
-                    newCombinedData.sort((a, b) => (a.doc_date > b.doc_date) ? 1 : -1);
+                    
+                    // แก้ไข Logic การเรียงลำดับ: วันที่ -> เลขที่ -> ชื่อสินค้า
+                    newCombinedData.sort((a, b) => {
+                        // 1. เรียงตามวันที่ (Date)
+                        if (a.doc_date !== b.doc_date) {
+                            return a.doc_date > b.doc_date ? 1 : -1;
+                        }
+                        // 2. ถ้าวันที่เท่ากัน ให้เรียงตามเลขที่เอกสาร (Doc No)
+                        if (a.doc_no !== b.doc_no) {
+                            return a.doc_no > b.doc_no ? 1 : -1;
+                        }
+                        // 3. ถ้าเลขที่เท่ากัน ให้เรียงตามชื่อสินค้า (Product Name) ภาษาไทย
+                        const nameA = a.prod_name || '';
+                        const nameB = b.prod_name || '';
+                        return nameA.localeCompare(nameB, 'th');
+                    });
+
                     combinedSalesData = newCombinedData; 
                     referencePriceData = refData;
                     const totalRecords = combinedSalesData.length + referencePriceData.length;
