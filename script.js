@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
         { id: 'tax-error-pane', name: 'คำนวณภาษีผิดพลาด', numRows: 7 }, 
         { id: 'price-unit-error-pane', name: 'ขายผิดราคาและหน่วยนับ', numRows: 15 } 
     ]; 
-    console.log("Smart Check System Initialized. VAT Calculation Fix applied.");
+    console.log("Smart Check System Initialized. Logic Revised (Sold+Gift Check).");
     
     const sidebarLinks = document.querySelectorAll('.sidebar-link');
     const logoHomeBtn = document.getElementById('logoHomeBtn');
@@ -309,6 +309,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    // Helper สำหรับปัดเศษทศนิยม 2 ตำแหน่งแบบบัญชี (Round Half Up)
+    const round2 = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+
     // =================================================================
     // UI LOGIC
     // =================================================================
@@ -525,45 +528,85 @@ document.addEventListener('DOMContentLoaded', function() {
             const tbody = document.getElementById('additional-check-body');
             if (!tbody) return;
 
+            // Function Helper to Normalize String (Trim & Lowercase)
+            const cleanStr = (s) => String(s || '').trim().toLowerCase();
+
             // Process Data with Step 1, 2, 3 Logic
             const processedData = combinedSalesData.map(row => {
                 let status = 'success';
                 let detectedMsg = '-';
                 
                 const taxType = (row.tax_type || '').toString().trim();
-                const EPSILON = 0.05;
+                const EPSILON = 0.10; // Increased tolerance for rounding errors
 
                 // --- Step 1: Tax Type = 3 ---
                 if (taxType === '3') {
-                    // 1.1 Check Gift, Product Value, VAT > 0
-                    if (row.qty_gift > 0 && row.product_value > 0 && row.vat_rate > 0) {
-                        status = 'error';
-                        detectedMsg = 'ตรวจพบว่าแถมออกมูลค่า';
-                    }
-                    
-                    // 1.2 Mapping with Reference Price
-                    if (status === 'success') {
-                        const refMatch = referencePriceData.find(ref => 
-                            ref.code === row.prod_code && ref.unit === row.unit
-                        );
-
-                        if (!refMatch) {
-                            status = 'error';
-                            detectedMsg = 'ตรวจราคาอ้างอิง (ไม่พบสินค้า)';
-                        } else {
-                            // Check Price vs Ref Price
-                            const priceInBill = row.price_per_unit;
+                    // Case 1: มีของแถม
+                    if (row.qty_gift > 0) {
+                        // Case 1.1: แถม + ขาย (Mix)
+                        if (row.qty_sold > 0) {
+                            const totalQty = row.qty_sold + row.qty_gift;
+                            const allDiscounts = row.item_disc + row.bill_disc + row.marketing_disc;
                             
-                            // 1. ตรวจแบบราคาตรงกัน (Normal Case)
-                            const diffNormal = Math.abs(refMatch.price - priceInBill);
+                            // คำนวณราคาเต็มเหมือนขายทุกชิ้น
+                            const calcFullCharge = (totalQty * row.price_per_unit) - allDiscounts;
                             
-                            // 2. ตรวจแบบถอด VAT (กรณีบิลแสดงราคาถอด VAT แต่ Ref แสดงราคารวม VAT)
-                            const diffWithVat = Math.abs(refMatch.price - (priceInBill * 1.07));
-
-                            // ยอมรับได้ ถ้าตรงกับอย่างใดอย่างหนึ่ง (ใช้ EPSILON เพื่อเลี่ยง Error ทศนิยม)
-                            if (diffNormal > EPSILON && diffWithVat > EPSILON) {
+                            // ถ้า Total Value ในบิล เท่ากับ ราคาเต็ม (แปลว่าคิดเงินค่าของแถมด้วย) -> ผิด
+                            if (Math.abs(calcFullCharge - row.total_value) < EPSILON) { // ใช้ < EPSILON คือเท่ากัน
                                 status = 'error';
-                                detectedMsg = `ราคาไม่ตรง (บิล:${priceInBill})`;
+                                detectedMsg = 'มีการคิดมูลค่าสินค้าแถม'; 
+                            } 
+                            // ถ้าไม่เท่ากัน (ปกติ Total Value ควรน้อยกว่าเพราะไม่ได้คิดค่าแถม) -> ถูกต้อง (Pass)
+                        } 
+                        // Case 1.2: แถมล้วนๆ (ขาย = 0)
+                        else {
+                            // ตรวจ VAT ต้องเป็น 0
+                            if (row.vat_rate > 0 || row.product_value > 0) {
+                                status = 'error';
+                                detectedMsg = 'มีการคิดมูลค่าสินค้าแถม';
+                            }
+                        }
+                    } 
+                    // Case 2: ไม่มีของแถม (Check Price Reference ปกติ)
+                    else {
+                        if (status === 'success') {
+                            // Use FILTER instead of FIND to get ALL matches
+                            const allRefMatches = referencePriceData.filter(ref => 
+                                cleanStr(ref.code) === cleanStr(row.prod_code) && 
+                                cleanStr(ref.unit) === cleanStr(row.unit)
+                            );
+
+                            if (allRefMatches.length === 0) {
+                                status = 'error';
+                                detectedMsg = 'ตรวจราคาอ้างอิง (ไม่พบสินค้า)';
+                            } else {
+                                // Check if ANY of the found matches fit the bill price
+                                const priceInBill = row.price_per_unit;
+                                let isPriceFound = false;
+
+                                for (const ref of allRefMatches) {
+                                    const refPrice = ref.price;
+                                    
+                                    // Check 1: Exact Match
+                                    const diffExact = Math.abs(refPrice - priceInBill);
+                                    // Check 2: Bill is Base, Ref is Incl VAT
+                                    const refBase = refPrice / 1.07;
+                                    const diffVat1 = Math.abs(refBase - priceInBill);
+                                    // Check 3: Bill is Base, Ref is Incl VAT (Alt calc)
+                                    const billInclVat = priceInBill * 1.07;
+                                    const diffVat2 = Math.abs(refPrice - billInclVat);
+
+                                    if (diffExact <= EPSILON || diffVat1 <= EPSILON || diffVat2 <= EPSILON) {
+                                        isPriceFound = true;
+                                        break; // Found a valid match, stop looking
+                                    }
+                                }
+
+                                if (!isPriceFound) {
+                                    status = 'error';
+                                    // Show the price of the first match for context
+                                    detectedMsg = `ราคาไม่ตรง (บิล:${priceInBill} vs อ้างอิง:${allRefMatches[0].price})`;
+                                }
                             }
                         }
                     }
@@ -577,7 +620,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (!isValValid || !isTotalValid) {
                         status = 'error';
-                        detectedMsg = 'มูลค่าสินค้าผิดปกติ (Step 2.1)';
+                        detectedMsg = 'สินค้า No-VAT: มีการคิดมูลค่า ภพ. หรือคำนวณผิด';
                     }
 
                     // 2.2 Check VAT must be 0
@@ -589,18 +632,32 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
 
-                // --- Step 3: Final Formula Check ---
+                // --- Step 3: Final Formula Check (UPDATED: Two Calculation Methods) ---
                 if (status === 'success') {
-                    // Formula: ((Sold + Gift) * Price) - Discounts
-                    const totalQty = row.qty_sold + row.qty_gift;
-                    const step3Calc = (totalQty * row.price_per_unit) - row.item_disc - row.bill_disc - row.marketing_disc;
-                    
-                    if (Math.abs(step3Calc - row.total_value) > EPSILON) {
-                        status = 'error';
-                        // Add detail on which step flow it came from
-                        if (taxType === '3') detectedMsg = 'คำนวณผิดพลาด (Step 3)';
-                        else if (taxType === '1') detectedMsg = 'คำนวณผิดพลาด (Step 3)';
-                        else detectedMsg = 'คำนวณผิดพลาด (Step 3)';
+                    // ถ้ามีของแถมในเคส Tax 3 เราข้ามการตรวจสูตรนี้ไปเลย เพราะสูตรนี้จะขัดแย้งกับ Logic ใหม่ของ User
+                    // (Logic ใหม่ User บอกว่า ห้ามเท่ากัน แต่สูตรนี้ปกติจะเช็คว่าต้องเท่ากัน)
+                    if (taxType === '3' && row.qty_gift > 0) {
+                        // Skip Step 3 for Gift Items in Tax Type 3
+                    } else {
+                        const totalQty = row.qty_sold + row.qty_gift;
+                        const discountTotal = row.item_disc + row.bill_disc + row.marketing_disc;
+
+                        // Method 1: Standard Calculation (Full Precision)
+                        const calcStandard = (totalQty * row.price_per_unit) - discountTotal;
+                        const validStandard = Math.abs(calcStandard - row.total_value) <= EPSILON;
+
+                        // Method 2: Accounting Calculation (Round Gross First)
+                        const grossRounded = round2(totalQty * row.price_per_unit);
+                        const calcAccounting = grossRounded - discountTotal;
+                        const validAccounting = Math.abs(calcAccounting - row.total_value) <= EPSILON;
+                        
+                        // If NEITHER method matches, flag as error
+                        if (!validStandard && !validAccounting) {
+                            status = 'error';
+                            if (taxType === '3') detectedMsg = 'คำนวณผิดพลาด (Step 3)';
+                            else if (taxType === '1') detectedMsg = 'คำนวณผิดพลาด (Step 3)';
+                            else detectedMsg = 'คำนวณผิดพลาด (Step 3)';
+                        }
                     }
                 }
 
