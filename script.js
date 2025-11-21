@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
         { id: 'tax-error-pane', name: 'คำนวณภาษีผิดพลาด', numRows: 7 }, 
         { id: 'price-unit-error-pane', name: 'ขายผิดราคาและหน่วยนับ', numRows: 15 } 
     ]; 
-    console.log("Smart Check System Initialized. Final Update applied.");
+    console.log("Smart Check System Initialized. VAT Calculation Fix applied.");
     
     const sidebarLinks = document.querySelectorAll('.sidebar-link');
     const logoHomeBtn = document.getElementById('logoHomeBtn');
@@ -551,10 +551,19 @@ document.addEventListener('DOMContentLoaded', function() {
                             status = 'error';
                             detectedMsg = 'ตรวจราคาอ้างอิง (ไม่พบสินค้า)';
                         } else {
-                            // Check Price vs Ref Price (Incl VAT)
-                            if (Math.abs(refMatch.price - row.price_per_unit) > EPSILON) {
+                            // Check Price vs Ref Price
+                            const priceInBill = row.price_per_unit;
+                            
+                            // 1. ตรวจแบบราคาตรงกัน (Normal Case)
+                            const diffNormal = Math.abs(refMatch.price - priceInBill);
+                            
+                            // 2. ตรวจแบบถอด VAT (กรณีบิลแสดงราคาถอด VAT แต่ Ref แสดงราคารวม VAT)
+                            const diffWithVat = Math.abs(refMatch.price - (priceInBill * 1.07));
+
+                            // ยอมรับได้ ถ้าตรงกับอย่างใดอย่างหนึ่ง (ใช้ EPSILON เพื่อเลี่ยง Error ทศนิยม)
+                            if (diffNormal > EPSILON && diffWithVat > EPSILON) {
                                 status = 'error';
-                                detectedMsg = 'ตรวจราคาอ้างอิง (ราคาไม่ตรง)';
+                                detectedMsg = `ราคาไม่ตรง (บิล:${priceInBill})`;
                             }
                         }
                     }
