@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
         { id: 'tax-error-pane', name: 'คำนวณภาษีผิดพลาด', numRows: 7 }, 
         { id: 'price-unit-error-pane', name: 'ขายผิดราคาและหน่วยนับ', numRows: 15 } 
     ]; 
-    console.log("Smart Check System Initialized. Logic Revised (Sold+Gift Check).");
+    console.log("Smart Check System Initialized. Final Version: Sync & Display Fix.");
     
     const sidebarLinks = document.querySelectorAll('.sidebar-link');
     const logoHomeBtn = document.getElementById('logoHomeBtn');
@@ -290,7 +290,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // HELPER FUNCTIONS
     // =================================================================
     
-    // ฟังก์ชันช่วยค้นหาข้อมูลจาก Data Set โดยตรง (ค้นหาข้ามหน้าได้)
     function getFilteredData(allData, tbodyId) {
         const input = document.querySelector(`input[data-target-tbody="${tbodyId}"]`);
         if (!input) return allData;
@@ -298,19 +297,148 @@ document.addEventListener('DOMContentLoaded', function() {
         const searchText = input.value.toLowerCase().trim();
         if (!searchText) return allData;
         
-        // แยกคำค้นหาด้วยช่องว่าง เพื่อให้ค้นหาได้หลายคำ
         const terms = searchText.split(/\s+/).filter(t => t.length > 0);
         
         return allData.filter(item => {
-            // รวมข้อมูลทุก Field เป็นข้อความเดียวเพื่อค้นหา
             const itemValues = Object.values(item).join(' ').toLowerCase();
-            // ต้องเจอทุกคำที่พิมพ์ (AND logic)
             return terms.every(term => itemValues.includes(term));
         });
     }
 
-    // Helper สำหรับปัดเศษทศนิยม 2 ตำแหน่งแบบบัญชี (Round Half Up)
     const round2 = (num) => Math.round((num + Number.EPSILON) * 100) / 100;
+    const cleanStr = (s) => String(s || '').trim().toLowerCase();
+
+    // =================================================================
+    // CENTRAL VALIDATION LOGIC
+    // =================================================================
+    
+    function calculateRowStatus(row) {
+        let status = 'success';
+        let detectedMsg = '-';
+        const taxType = (row.tax_type || '').toString().trim();
+        const EPSILON = 0.10;
+
+        // --- Step 1: Tax Type = 3 ---
+        if (taxType === '3') {
+            
+            // -----------------------------------------------------
+            // 1. ALWAYS CHECK PRICE (First Priority)
+            // -----------------------------------------------------
+            if (row.qty_sold > 0) {
+                // MULTI-ROW SEARCH FIX
+                const allRefMatches = referencePriceData.filter(ref => 
+                    cleanStr(ref.code) === cleanStr(row.prod_code) && 
+                    cleanStr(ref.unit) === cleanStr(row.unit)
+                );
+
+                if (allRefMatches.length === 0) {
+                    status = 'error';
+                    // Sub-check to identify why it wasn't found
+                    const codeExists = referencePriceData.some(ref => cleanStr(ref.code) === cleanStr(row.prod_code));
+                    if (codeExists) {
+                         detectedMsg = 'ไม่พบหน่วยนับในราคาอ้างอิง';
+                    } else {
+                         detectedMsg = 'ไม่พบรหัสสินค้าในราคาอ้างอิง';
+                    }
+                } else {
+                    const priceInBill = row.price_per_unit;
+                    let isPriceFound = false;
+
+                    for (const ref of allRefMatches) {
+                        const refPrice = ref.price;
+                        // Check 1: Exact Match
+                        const diffExact = Math.abs(refPrice - priceInBill);
+                        // Check 2: Bill is Base, Ref is Incl VAT
+                        const refBase = refPrice / 1.07;
+                        const diffVat1 = Math.abs(refBase - priceInBill);
+                        // Check 3: Bill is Base, Ref is Incl VAT (Alt calc)
+                        const billInclVat = priceInBill * 1.07;
+                        const diffVat2 = Math.abs(refPrice - billInclVat);
+
+                        if (diffExact <= EPSILON || diffVat1 <= EPSILON || diffVat2 <= EPSILON) {
+                            isPriceFound = true;
+                            break;
+                        }
+                    }
+
+                    if (!isPriceFound) {
+                        status = 'error';
+                        detectedMsg = 'ไม่พบราคาอ้างอิง';
+                    }
+                }
+            }
+
+            // -----------------------------------------------------
+            // 2. CHECK GIFT LOGIC (Second Priority)
+            // -----------------------------------------------------
+            // Run only if no previous error OR if we want to catch gift error as well
+            if (status === 'success' && row.qty_gift > 0) {
+                // Case 1.1: Gift + Sold (Mix)
+                if (row.qty_sold > 0) {
+                    const totalQty = row.qty_sold + row.qty_gift;
+                    const allDiscounts = row.item_disc + row.bill_disc + row.marketing_disc;
+                    const calcFullCharge = (totalQty * row.price_per_unit) - allDiscounts;
+                    
+                    // If Total Value == Full Charge (meaning Gift was charged), ERROR
+                    if (Math.abs(calcFullCharge - row.total_value) < EPSILON) { 
+                        status = 'error';
+                        detectedMsg = 'มีการคิดมูลค่าสินค้าแถม'; 
+                    } 
+                } 
+                // Case 1.2: Gift Only
+                else {
+                    if (row.vat_rate > 0 || row.product_value > 0) {
+                        status = 'error';
+                        detectedMsg = 'มีการคิดมูลค่าสินค้าแถม';
+                    }
+                }
+            } 
+        }
+        // --- Step 2: Tax Type = 1 ---
+        else if (taxType === '1') {
+            // 2.1 Logic Updated
+            const gross = row.qty_sold * row.price_per_unit;
+            const discounts = row.item_disc + row.bill_disc + row.marketing_disc;
+            const netCalc = gross - discounts;
+            
+            if (Math.abs(netCalc - row.total_value) > EPSILON) {
+                status = 'error';
+                detectedMsg = 'สินค้า No-VAT: คำนวณยอดสุทธิไม่ถูกต้อง (Step 2.1)';
+            }
+
+            // 2.2 New Message
+            if (status === 'success') {
+                if (Math.abs(row.vat_rate) > 0) {
+                    status = 'error';
+                    detectedMsg = 'สินค้า No-VAT: มีการคิดมูลค่า ภพ. หรือคำนวณผิด';
+                }
+            }
+        }
+
+        // --- Step 4: Discount Calculation Check (ALWAYS RUN even if it's gift, unless it's Tax 3 + Gift Mixed which is handled above) ---
+        // But we must ensure we don't overwrite existing specific errors.
+        if (status === 'success') {
+            // Formula: (Sold * Price) == Item Total?
+            // Using round2 for safe multiplication comparison
+            const grossCalc = round2(row.qty_sold * row.price_per_unit);
+            const itemTotalInBill = row.item_total; 
+
+            // Condition 1: (Sale * Price) == Item Total (Check if match)
+            if (Math.abs(grossCalc - itemTotalInBill) > EPSILON) {
+                // If NOT equal, verify net calculation (Condition 2)
+                // (Sale * Price) - All Discounts == Total Value
+                const totalDiscounts = row.item_disc + row.bill_disc + row.marketing_disc;
+                const netCalc = grossCalc - totalDiscounts;
+
+                if (Math.abs(netCalc - row.total_value) > EPSILON) {
+                    status = 'error';
+                    detectedMsg = 'การคำนวณส่วนลดผิดพลาด';
+                }
+            }
+        }
+        
+        return { status, detectedMsg };
+    }
 
     // =================================================================
     // UI LOGIC
@@ -394,32 +522,21 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderPaginationControls(containerId, currentPageNum, totalPages, renderCallback) {
         const container = document.getElementById(containerId);
         if (!container) return;
-        
         container.innerHTML = ''; 
-
         if (totalPages <= 1) return; 
 
         const firstBtn = document.createElement('button');
         firstBtn.className = 'btn btn-sm btn-outline-secondary';
         firstBtn.innerHTML = '<i class="bi bi-chevron-double-left"></i>';
-        firstBtn.title = 'หน้าแรก';
         firstBtn.disabled = currentPageNum === 1;
-        firstBtn.onclick = () => {
-            if (currentPageNum > 1) {
-                renderCallback(1);
-            }
-        };
+        firstBtn.onclick = () => { if (currentPageNum > 1) renderCallback(1); };
         container.appendChild(firstBtn);
 
         const prevBtn = document.createElement('button');
         prevBtn.className = 'btn btn-sm btn-outline-secondary ms-1';
         prevBtn.innerHTML = '<i class="bi bi-chevron-left"></i> ก่อนหน้า';
         prevBtn.disabled = currentPageNum === 1;
-        prevBtn.onclick = () => {
-            if (currentPageNum > 1) {
-                renderCallback(currentPageNum - 1);
-            }
-        };
+        prevBtn.onclick = () => { if (currentPageNum > 1) renderCallback(currentPageNum - 1); };
         container.appendChild(prevBtn);
 
         const pageInfo = document.createElement('span');
@@ -431,23 +548,14 @@ document.addEventListener('DOMContentLoaded', function() {
         nextBtn.className = 'btn btn-sm btn-outline-secondary me-1';
         nextBtn.innerHTML = 'ถัดไป <i class="bi bi-chevron-right"></i>';
         nextBtn.disabled = currentPageNum === totalPages;
-        nextBtn.onclick = () => {
-            if (currentPageNum < totalPages) {
-                renderCallback(currentPageNum + 1);
-            }
-        };
+        nextBtn.onclick = () => { if (currentPageNum < totalPages) renderCallback(currentPageNum + 1); };
         container.appendChild(nextBtn);
 
         const lastBtn = document.createElement('button');
         lastBtn.className = 'btn btn-sm btn-outline-secondary';
         lastBtn.innerHTML = '<i class="bi bi-chevron-double-right"></i>';
-        lastBtn.title = 'หน้าสุดท้าย';
         lastBtn.disabled = currentPageNum === totalPages;
-        lastBtn.onclick = () => {
-            if (currentPageNum < totalPages) {
-                renderCallback(totalPages);
-            }
-        };
+        lastBtn.onclick = () => { if (currentPageNum < totalPages) renderCallback(totalPages); };
         container.appendChild(lastBtn);
     }
 
@@ -462,8 +570,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const isReduced = reducedColumnsPanes.includes(paneId);
 
         rawData.forEach(row => {
-            const rowClass = row.is_error ? 'table-danger-light' : '';
-            const resultIcon = row.is_error ? '<i class="bi bi-x-circle-fill text-danger" title="มีข้อผิดพลาด"></i>' : '<i class="bi bi-check-circle-fill text-success" title="ถูกต้อง"></i>';
+            // ใช้ is_error และ error_type ที่คำนวณไว้แล้วจาก combinedSalesData
+            const isError = row.is_error;
+            const rowClass = isError ? 'table-danger-light' : '';
+            // แสดง ToolTip ที่ไอคอน เพื่อบอกสาเหตุความผิดพลาด
+            const resultIcon = isError 
+                ? `<i class="bi bi-x-circle-fill text-danger" title="${row.error_type || 'ข้อผิดพลาด'}"></i>` 
+                : '<i class="bi bi-check-circle-fill text-success" title="ถูกต้อง"></i>';
+            
             let vatDisplay = row.vat_rate;
             if (vatDisplay < 1 && vatDisplay > 0) vatDisplay = vatDisplay * 100;
 
@@ -483,15 +597,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function generateAdditionalCheckTableHtml(rawData) {
         if (rawData.length === 0) {
-             return '<tr><td colspan="8" class="text-center text-muted py-4"><i class="bi bi-info-circle-fill me-2"></i>ไม่พบข้อมูลบิลขาย</td></tr>';
+             return '<tr><td colspan="8" class="text-center text-muted py-4"><i class="bi bi-info-circle-fill me-2"></i>ไม่พบรายการผิดพลาด</td></tr>';
         }
         let html = '';
         const formatCurrency = (val) => (typeof val !== 'number') ? val : val.toLocaleString(undefined, DECIMAL_FORMAT);
 
         rawData.forEach(row => {
-            const isError = (row.result === 'error');
+            // ดึงผลลัพธ์จาก row โดยตรง (เพราะคำนวณมาแล้ว)
+            const isError = row.is_error;
             const resultIcon = isError ? '<i class="bi bi-x-circle-fill text-danger"></i>' : '<i class="bi bi-check-circle-fill text-success"></i>';
-            const detectedText = isError ? row.detected : '-';
+            const detectedText = isError ? row.error_type : '-';
             const detectedClass = isError ? 'text-danger' : 'text-success';
 
             html += `
@@ -522,173 +637,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function renderReportTable(paneId) {
-        const tbodyId = (paneId === 'bc-summary-pane') ? 'bc-summary-body' : (paneId === 'bc-item-pane') ? 'bc-item-body' : paneId + '-body';
+        // FIX ID MISMATCH: Map paneId to correct tbody ID
+        let tbodyId = paneId + '-body';
+        if (paneId === 'bc-summary-pane') tbodyId = 'bc-summary-body';
+        if (paneId === 'bc-item-pane') tbodyId = 'bc-item-body';
+        if (paneId === 'additional-check-pane') tbodyId = 'additional-check-body'; // Corrected ID mapping
         
-        if(paneId === 'additional-check-pane') {
-            const tbody = document.getElementById('additional-check-body');
-            if (!tbody) return;
-
-            // Function Helper to Normalize String (Trim & Lowercase)
-            const cleanStr = (s) => String(s || '').trim().toLowerCase();
-
-            // Process Data with Step 1, 2, 3 Logic
-            const processedData = combinedSalesData.map(row => {
-                let status = 'success';
-                let detectedMsg = '-';
-                
-                const taxType = (row.tax_type || '').toString().trim();
-                const EPSILON = 0.10; // Increased tolerance for rounding errors
-
-                // --- Step 1: Tax Type = 3 ---
-                if (taxType === '3') {
-                    // Case 1: มีของแถม
-                    if (row.qty_gift > 0) {
-                        // Case 1.1: แถม + ขาย (Mix)
-                        if (row.qty_sold > 0) {
-                            const totalQty = row.qty_sold + row.qty_gift;
-                            const allDiscounts = row.item_disc + row.bill_disc + row.marketing_disc;
-                            
-                            // คำนวณราคาเต็มเหมือนขายทุกชิ้น
-                            const calcFullCharge = (totalQty * row.price_per_unit) - allDiscounts;
-                            
-                            // ถ้า Total Value ในบิล เท่ากับ ราคาเต็ม (แปลว่าคิดเงินค่าของแถมด้วย) -> ผิด
-                            if (Math.abs(calcFullCharge - row.total_value) < EPSILON) { // ใช้ < EPSILON คือเท่ากัน
-                                status = 'error';
-                                detectedMsg = 'มีการคิดมูลค่าสินค้าแถม'; 
-                            } 
-                            // ถ้าไม่เท่ากัน (ปกติ Total Value ควรน้อยกว่าเพราะไม่ได้คิดค่าแถม) -> ถูกต้อง (Pass)
-                        } 
-                        // Case 1.2: แถมล้วนๆ (ขาย = 0)
-                        else {
-                            // ตรวจ VAT ต้องเป็น 0
-                            if (row.vat_rate > 0 || row.product_value > 0) {
-                                status = 'error';
-                                detectedMsg = 'มีการคิดมูลค่าสินค้าแถม';
-                            }
-                        }
-                    } 
-                    // Case 2: ไม่มีของแถม (Check Price Reference ปกติ)
-                    else {
-                        if (status === 'success') {
-                            // Use FILTER instead of FIND to get ALL matches
-                            const allRefMatches = referencePriceData.filter(ref => 
-                                cleanStr(ref.code) === cleanStr(row.prod_code) && 
-                                cleanStr(ref.unit) === cleanStr(row.unit)
-                            );
-
-                            if (allRefMatches.length === 0) {
-                                status = 'error';
-                                detectedMsg = 'ตรวจราคาอ้างอิง (ไม่พบสินค้า)';
-                            } else {
-                                // Check if ANY of the found matches fit the bill price
-                                const priceInBill = row.price_per_unit;
-                                let isPriceFound = false;
-
-                                for (const ref of allRefMatches) {
-                                    const refPrice = ref.price;
-                                    
-                                    // Check 1: Exact Match
-                                    const diffExact = Math.abs(refPrice - priceInBill);
-                                    // Check 2: Bill is Base, Ref is Incl VAT
-                                    const refBase = refPrice / 1.07;
-                                    const diffVat1 = Math.abs(refBase - priceInBill);
-                                    // Check 3: Bill is Base, Ref is Incl VAT (Alt calc)
-                                    const billInclVat = priceInBill * 1.07;
-                                    const diffVat2 = Math.abs(refPrice - billInclVat);
-
-                                    if (diffExact <= EPSILON || diffVat1 <= EPSILON || diffVat2 <= EPSILON) {
-                                        isPriceFound = true;
-                                        break; // Found a valid match, stop looking
-                                    }
-                                }
-
-                                if (!isPriceFound) {
-                                    status = 'error';
-                                    // Show the price of the first match for context
-                                    detectedMsg = `ราคาไม่ตรง (บิล:${priceInBill} vs อ้างอิง:${allRefMatches[0].price})`;
-                                }
-                            }
-                        }
-                    }
-                }
-                // --- Step 2: Tax Type = 1 ---
-                else if (taxType === '1') {
-                    // 2.1 Check Calculation Consistency
-                    const calcProductVal = row.qty_sold * row.price_per_unit;
-                    const isValValid = Math.abs(row.product_value - calcProductVal) < EPSILON;
-                    const isTotalValid = Math.abs(row.product_value - row.total_value) < EPSILON;
-
-                    if (!isValValid || !isTotalValid) {
-                        status = 'error';
-                        detectedMsg = 'สินค้า No-VAT: มีการคิดมูลค่า ภพ. หรือคำนวณผิด';
-                    }
-
-                    // 2.2 Check VAT must be 0
-                    if (status === 'success') {
-                        if (Math.abs(row.vat_rate) > 0) {
-                            status = 'error';
-                            detectedMsg = 'ภาษีต้องเป็น 0 (Step 2.2)';
-                        }
-                    }
-                }
-
-                // --- Step 3: Final Formula Check (UPDATED: Two Calculation Methods) ---
-                if (status === 'success') {
-                    // ถ้ามีของแถมในเคส Tax 3 เราข้ามการตรวจสูตรนี้ไปเลย เพราะสูตรนี้จะขัดแย้งกับ Logic ใหม่ของ User
-                    // (Logic ใหม่ User บอกว่า ห้ามเท่ากัน แต่สูตรนี้ปกติจะเช็คว่าต้องเท่ากัน)
-                    if (taxType === '3' && row.qty_gift > 0) {
-                        // Skip Step 3 for Gift Items in Tax Type 3
-                    } else {
-                        const totalQty = row.qty_sold + row.qty_gift;
-                        const discountTotal = row.item_disc + row.bill_disc + row.marketing_disc;
-
-                        // Method 1: Standard Calculation (Full Precision)
-                        const calcStandard = (totalQty * row.price_per_unit) - discountTotal;
-                        const validStandard = Math.abs(calcStandard - row.total_value) <= EPSILON;
-
-                        // Method 2: Accounting Calculation (Round Gross First)
-                        const grossRounded = round2(totalQty * row.price_per_unit);
-                        const calcAccounting = grossRounded - discountTotal;
-                        const validAccounting = Math.abs(calcAccounting - row.total_value) <= EPSILON;
-                        
-                        // If NEITHER method matches, flag as error
-                        if (!validStandard && !validAccounting) {
-                            status = 'error';
-                            if (taxType === '3') detectedMsg = 'คำนวณผิดพลาด (Step 3)';
-                            else if (taxType === '1') detectedMsg = 'คำนวณผิดพลาด (Step 3)';
-                            else detectedMsg = 'คำนวณผิดพลาด (Step 3)';
-                        }
-                    }
-                }
-
-                return { 
-                    ...row, 
-                    result: status, 
-                    detected: detectedMsg 
-                };
-            });
-
-            // ** กรองข้อมูลสำหรับแท็บผิดพลาด (Data Filter) **
-            const filteredAddData = getFilteredData(processedData, 'additional-check-body');
-
-            const totalPages = Math.ceil(filteredAddData.length / ITEMS_PER_PAGE);
-            
-            // Reset to page 1 if search result is small
-            if (currentAddCheckPage > totalPages) currentAddCheckPage = 1;
-            if (totalPages > 0 && currentAddCheckPage === 0) currentAddCheckPage = 1;
-
-            const startIndex = (currentAddCheckPage - 1) * ITEMS_PER_PAGE;
-            const endIndex = startIndex + ITEMS_PER_PAGE;
-            const dataToRender = filteredAddData.slice(startIndex, endIndex);
-            
-            renderPaginationControls('additional-check-pagination', currentAddCheckPage, totalPages, (newPage) => {
-                currentAddCheckPage = newPage;
-                renderReportTable('additional-check-pane');
-            });
-            tbody.innerHTML = generateAdditionalCheckTableHtml(dataToRender);
-            return;
-        }
-
         const tbody = document.getElementById(tbodyId);
         if (!tbody) return;
 
@@ -696,15 +650,20 @@ document.addEventListener('DOMContentLoaded', function() {
              tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-info-circle-fill me-2"></i>ไม่พบข้อมูลบิลขายต่ำกว่าทุน</td></tr>';
             return;
         }
+
+        // เลือก Data Source ตาม Pane
+        let sourceData = combinedSalesData;
         
-        // ** กรองข้อมูลหลัก (Data Filter) **
-        const allData = combinedSalesData;
-        const filteredData = getFilteredData(allData, tbodyId);
+        // ถ้าเป็นหน้า "ผิดพลาด" ให้กรองเอาเฉพาะตัวที่ is_error = true
+        if (paneId === 'additional-check-pane') {
+            sourceData = sourceData.filter(row => row.is_error);
+        }
+
+        // กรองข้อมูลด้วย Search Box
+        const filteredData = getFilteredData(sourceData, tbodyId);
         
         if (paneId === 'total-value-pane') {
             const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
-            
-            // Reset to page 1 if search result is small
             if (currentPage > totalPages) currentPage = 1; 
             if (totalPages > 0 && currentPage === 0) currentPage = 1;
 
@@ -717,8 +676,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 renderReportTable('total-value-pane');
             });
             tbody.innerHTML = generateReportTableHtml(dataToRender, paneId);
+
+        } else if (paneId === 'additional-check-pane') {
+            const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
+            if (currentAddCheckPage > totalPages) currentAddCheckPage = 1;
+            if (totalPages > 0 && currentAddCheckPage === 0) currentAddCheckPage = 1;
+
+            const startIndex = (currentAddCheckPage - 1) * ITEMS_PER_PAGE;
+            const endIndex = startIndex + ITEMS_PER_PAGE;
+            const dataToRender = filteredData.slice(startIndex, endIndex);
+            
+            renderPaginationControls('additional-check-pagination', currentAddCheckPage, totalPages, (newPage) => {
+                currentAddCheckPage = newPage;
+                renderReportTable('additional-check-pane');
+            });
+            // Ensure we write to the correct tbody (which we mapped above)
+            tbody.innerHTML = generateAdditionalCheckTableHtml(dataToRender);
+
         } else {
-             // สำหรับแท็บย่อยอื่น ๆ
              tbody.innerHTML = generateReportTableHtml(filteredData, paneId);
         }
     }
@@ -727,12 +702,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const tbody = document.getElementById('ref-price-body');
         if (!tbody) return;
         
-        // ** กรองข้อมูลโครงสร้างราคา (Data Filter) **
         const filteredData = getFilteredData(referencePriceData, 'ref-price-body');
-
         const totalPages = Math.ceil(filteredData.length / ITEMS_PER_PAGE);
         
-        // Reset to page 1 if search result is small
         if (currentRefPage > totalPages) currentRefPage = 1;
         if (totalPages > 0 && currentRefPage === 0) currentRefPage = 1;
 
@@ -752,8 +724,6 @@ document.addEventListener('DOMContentLoaded', function() {
         searchInputs.forEach(input => {
             input.addEventListener('keyup', function(e) {
                 const targetBody = this.getAttribute('data-target-tbody');
-                
-                // เมื่อพิมพ์ค้นหา ให้รีเซ็ตหน้าเป็นหน้า 1 แล้วสั่งวาดตารางใหม่ (Re-render with Filter)
                 if (targetBody === 'ref-price-body') {
                     currentRefPage = 1;
                     renderRefPriceTable();
@@ -764,13 +734,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     currentPage = 1;
                     renderReportTable('total-value-pane');
                 } else {
-                    // สำหรับแท็บย่อยอื่นๆ
                     const paneId = targetBody.replace('-body', ''); 
                     renderReportTable(paneId);
                 }
             });
-            
-            // ป้องกันการกด Enter แล้ว Refresh หน้า
             input.addEventListener('keydown', function(e) { 
                 if (e.key === 'Enter') { e.preventDefault(); } 
             });
@@ -911,8 +878,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         return nameA.localeCompare(nameB, 'th');
                     });
 
-                    combinedSalesData = newCombinedData; 
-                    referencePriceData = refData;
+                    // *** Apply Validation Immediately ***
+                    referencePriceData = refData; // Must set Ref Data before validation
+                    combinedSalesData = newCombinedData.map(row => {
+                        const validation = calculateRowStatus(row);
+                        return {
+                            ...row,
+                            is_error: validation.status === 'error',
+                            error_type: validation.detectedMsg
+                        };
+                    });
+
                     const totalRecords = combinedSalesData.length + referencePriceData.length;
                     statusDiv.classList.remove('alert-info');
                     statusDiv.classList.add('alert-success');
