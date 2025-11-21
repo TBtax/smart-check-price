@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบตรวจสอบราคาขาย: Smart Check System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            /* สี Theme หลัก */
+            --primary-color: #00178F; 
+            --success-color: #48cfad;
+            --warning-color: #ffce54;
+            --danger-color: #e9573f;
+            --bg-light: #f4f6f9; 
+            --sidebar-width: 250px;
+            --sidebar-collapsed-width: 60px;
+
+            /* สี Gradient Card */
+            --soft-card-start: #4F72E5; 
+            --soft-card-end: #00178F;   
+            --soft-text-color: #ffffff;
+        }
+        body {
+            background-color: var(--bg-light);
+            font-family: 'Prompt', sans-serif; 
+            margin: 0;
+            padding: 0;
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: var(--sidebar-collapsed-width); 
+            background-color: #ffffff;
+            height: 100vh;
+            padding: 1rem 0;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.05);
+            transition: width 0.3s ease;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            overflow-x: hidden;
+            flex-shrink: 0;
+        }
+
+        .sidebar-logo-title {
+            font-size: 1.4rem; 
+            font-weight: 700;
+            color: var(--primary-color); 
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            height: 40px;
+            padding: 0 15px;
+            white-space: nowrap;
+            overflow: hidden;
+            cursor: pointer; 
+        }
+
+        .sidebar-logo-title i {
+            font-size: 1.6rem;
+            margin-right: 15px;
+            width: 30px;
+            text-align: center;
+        }
+
+        .sidebar:hover {
+            width: var(--sidebar-width); 
+        }
+
+        .sidebar-item-btn {
+            display: flex;
+            align-items: center;
+            width: 100%; 
+            text-align: left;
+            border: none;
+            background-color: transparent;
+            padding: 10px 15px;
+            margin-bottom: 5px;
+            color: #666;
+            cursor: pointer;
+            border-radius: 0 50px 50px 0;
+            transition: all 0.3s ease;
+            overflow: hidden; 
+            white-space: nowrap;
+        }
+        
+        .sidebar-item-btn i {
+            font-size: 1.5rem;
+            margin-right: 15px;
+            width: 30px;
+            text-align: center;
+            color: var(--primary-color);
+            transition: all 0.3s ease; 
+        }
+        
+        .sidebar-item-btn.active,
+        .sidebar-item-btn:hover {
+            background-color: #e6e9fa; 
+            color: var(--primary-color);
+            font-weight: 500;
+        }
+        .sidebar-item-btn.active i {
+            color: var(--primary-color);
+        }
+        
+        .sidebar-item-btn span {
+            text-overflow: ellipsis;
+            overflow: hidden; 
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        
+        .sidebar:not(:hover) .sidebar-item-btn i {
+            opacity: 1; 
+            width: 30px;
+            margin-right: 15px;
+        }
+
+        .sidebar:not(:hover) .sidebar-item-btn span {
+            opacity: 0;
+            position: absolute; 
+            left: 100%;
+        }
+        
+        .sidebar:hover .sidebar-item-btn i {
+            opacity: 0; 
+            width: 0;
+            margin-right: 0;
+            transition: opacity 0.3s ease, width 0.3s ease, margin 0.3s ease; 
+        }
+        
+        .sidebar:hover .sidebar-item-btn span {
+            opacity: 1;
+            position: relative; 
+            left: 0;
+            text-overflow: clip; 
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 2rem;
+            max-width: calc(100% - var(--sidebar-collapsed-width));
+        }
+        
+        .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); }
+        
+        .card.summary-card-inner { 
+            padding: 0; 
+            display: flex;
+            flex-direction: column;
+            border: none !important; 
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.30); 
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer; 
+        }
+        
+        .card.summary-card-inner:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.40);
+        }
+
+        .card-header-summary {
+            padding: 10px 15px;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .card-body-summary {
+            background-color: #ffffff; 
+            color: #000000 !important; 
+            padding: 15px 15px;
+            text-align: center;
+            flex-grow: 1; 
+            border-radius: 0 0 12px 12px;
+        }
+        
+        .summary-value { 
+            font-size: 3rem; 
+            font-weight: 800; 
+            line-height: 1.1; 
+        }
+        
+        .summary-unit {
+            font-size: 1rem; 
+            font-weight: 500;
+            color: #666; 
+            margin-top: 5px; 
+            min-height: 1.25rem; 
+        }
+        
+        .gradient-card-1, 
+        .gradient-card-2, 
+        .gradient-card-3, 
+        .gradient-card-4 {
+            background: linear-gradient(135deg, var(--soft-card-start) 0%, var(--soft-card-end) 100%) !important;
+            color: var(--soft-text-color) !important; 
+        }
+        
+        .gradient-card-1 .card-header-summary div,
+        .gradient-card-2 .card-header-summary div,
+        .gradient-card-3 .card-header-summary div,
+        .gradient-card-4 .card-header-summary div {
+            color: var(--soft-text-color) !important;
+        }
+        
+        .sell-out-table th, .sell-out-table td { 
+            text-align: right;
+        }
+        .sell-out-table th:first-child, .sell-out-table td:first-child { 
+            text-align: left;
+        }
+        .sell-out-table thead.sticky-top {
+            top: 0;
+            z-index: 10;
+        }
+        
+        /* CSS for Nav-Tabs */
+        .nav-tabs .nav-link {
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: 1px solid #dee2e6; 
+            border-radius: 0.25rem 0.25rem 0 0;
+        }
+        .nav-tabs .nav-link.active {
+            font-weight: 600;
+            color: var(--primary-color);
+            background-color: #e6e9fa; 
+            border-color: #dee2e6;
+            border-bottom: 3px solid var(--primary-color);
+        }
+        
+        .error-tabs-scroll .nav-item:nth-child(-n+5) .nav-link:not(.active) {
+            color: var(--danger-color); 
+        }
+        
+        .error-tabs-scroll {
+            flex-wrap: nowrap; 
+            overflow-x: auto; 
+            -ms-overflow-style: none; 
+            scrollbar-width: none; 
+            border-bottom: 1px solid #dee2e6;
+        }
+        .error-tabs-scroll::-webkit-scrollbar {
+            display: none; 
+        }
+        .error-tabs-scroll .nav-link {
+            white-space: nowrap;
+            font-size: 0.9rem; 
+            padding: 8px 12px;
+        }
+        
+        .table-danger-light {
+            --bs-table-bg: #fff5f5; 
+        }
+        
+        .alert-danger-light {
+            background-color: #fff5f5; 
+            border-color: var(--danger-color) !important;
+        }
+        .alert-success-light {
+            background-color: #f0fff0; 
+            border-color: var(--success-color) !important;
+        }
+
+        .sidebar-item-btn.disabled-link {
+            cursor: not-allowed !important;
+            opacity: 0.5;
+        }
+        
+        .report-table thead.sticky-top {
+            top: 0;
+            z-index: 10;
+        }
+        
+        /* === Font size 0.75rem === */
+        .report-table-font,
+        .report-table-font th, 
+        .report-table-font td {
+            font-size: 0.75rem !important;      
+            padding-top: 0.2rem !important;     
+            padding-bottom: 0.2rem !important;  
+            line-height: 1.2 !important; 
+            white-space: normal;                 
+            vertical-align: middle;
+        }
+
+        /* Limit width for 3rd (Name) and 5th (Product) columns */
+        .report-table-font th:nth-child(3),
+        .report-table-font td:nth-child(3),
+        .report-table-font th:nth-child(5),
+        .report-table-font td:nth-child(5) {
+            max-width: 150px; 
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        .margin-report-table,
+        .margin-report-table th, 
+        .margin-report-table td {
+            font-size: 0.7rem !important; 
+            padding-top: 0.4rem !important;   
+            padding-bottom: 0.4rem !important; 
+            line-height: 1.2 !important;        
+        }
+
+        .report-header-primary,
+        .report-header-primary th {
+            background-color: var(--primary-color) !important; 
+            color: #fff !important;
+        }
+        .report-header-error,
+        .report-header-error th {
+            background-color: var(--danger-color) !important; 
+            color: #fff !important;
+        }
+        .report-header-success,
+        .report-header-success th {
+            background-color: #198754 !important; 
+            color: #fff !important;
+        }
+        
+        .btn-primary-import {
+            background-color: var(--primary-color) !important;
+            border-color: var(--primary-color) !important;
+            color: #fff !important;
+            transition: background-color 0.2s;
+        }
+        .btn-primary-import:hover {
+            background-color: #0028A8 !important; 
+            border-color: #0028A8 !important;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="sidebarNav">
+        <div class="mb-4">
+            <div class="sidebar-logo-title" id="logoHomeBtn">
+                <i class="bi bi-lightbulb-fill"></i> 
+                <span>Smart Check</span>
+            </div>
+        </div>
+        
+        <button class="sidebar-item-btn sidebar-link active" data-bs-target="#content-welcome" type="button">
+            <i class="bi bi-house-door-fill"></i>
+            <span>🏠 หน้าหลัก</span>
+        </button>
+
+        <button class="sidebar-item-btn sidebar-link" data-bs-target="#content-summary" type="button">
+            <i class="bi bi-bar-chart-fill"></i>
+            <span>📊 สรุปผล (Dashboard)</span>
+        </button>
+        <button class="sidebar-item-btn sidebar-link" data-bs-target="#content-sell-out" type="button">
+            <i class="bi bi-graph-up-arrow"></i>
+            <span>📈 Sell-out (สรุปยอดขาย)</span>
+        </button>
+        <button class="sidebar-item-btn sidebar-link" data-bs-target="#content-error-check" type="button">
+            <i class="bi bi-exclamation-triangle-fill"></i>
+            <span>🔍 ตรวจความถูกต้องบิลขาย</span>
+        </button>
+        <button class="sidebar-item-btn sidebar-link" data-bs-target="#content-below-cost" type="button">
+            <i class="bi bi-cash-coin"></i>
+            <span>📉 ตรวจต่ำกว่าทุน</span>
+        </button>
+        
+        <button class="sidebar-item-btn sidebar-link" data-bs-target="#content-margin" type="button">
+            <i class="bi bi-percent"></i>
+            <span>📈 อัตรากำไรขั้นต้น (Margin)</span>
+        </button>
+        
+    </div>
+
+    <div class="main-content">
+        
+        <div class="tab-content shadow-sm" id="mainTabContent" style="background-color: #fff; padding: 30px; border-radius: 12px; min-height: 80vh;">
+            
+            <div class="tab-pane fade show active" id="content-welcome" role="tabpanel">
+                <div class="d-flex flex-column align-items-center justify-content-center h-100 py-5">
+                    <div class="text-center">
+                        <h1 class="display-6 fw-bold mb-3" style="color: var(--primary-color);">ยินดีต้อนรับสู่ Smart Check </h1>
+                        <p class="lead text-muted mb-5">ตรวจสอบความถูกต้องของราคา และ วิเคราะห์การขาย</p>
+                        
+                        <div class="row mb-4" style="max-width: 800px; margin: 0 auto;">
+                            <div class="col-md-6">
+                                <label for="checkerSelect" class="form-label fw-bold">เลือกชื่อผู้ตรวจสอบ:</label>
+                                <select class="form-select form-select-lg" id="checkerSelect" style="width: 100%; font-family: 'Prompt', sans-serif; cursor: pointer; position: relative; z-index: 1050;">
+                                    <option value="" selected disabled>-- กรุณาเลือกชื่อ --</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="agentSelect" class="form-label fw-bold">เอเย่นต์ที่ตรวจสอบ:</label>
+                                <select class="form-select form-select-lg" id="agentSelect" style="width: 100%; font-family: 'Prompt', sans-serif; cursor: pointer; position: relative; z-index: 1050;">
+                                    <option value="" selected disabled>-- กรุณาเลือกเอเย่นต์ --</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-danger-light border" id="checkerAlert" style="max-width: 500px; margin: 0 auto; transition: all 0.3s ease;">
+                            <p class="mb-0 text-danger fw-bold">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                กรุณาเลือกชื่อผู้ตรวจสอบ
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="content-summary" role="tabpanel"> 
+                <h3 class="mb-4" style="color: var(--primary-color);">📊 สรุปผลการตรวจสอบ</h3>
+                <div class="row mb-5 g-4">
+                    <div class="col-md-3">
+                        <div class="card summary-card-inner gradient-card-1">
+                            <div class="card-header-summary"><div>รายการตรวจสอบทั้งหมด</div></div>
+                            <div class="card-body-summary"><div class="summary-value">0</div><div class="summary-unit">รายการ</div></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card summary-card-inner gradient-card-2">
+                            <div class="card-header-summary"><div>ขายต่ำกว่าทุน</div></div>
+                            <div class="card-body-summary"><div class="summary-value">0</div><div class="summary-unit">รายการ</div></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card summary-card-inner gradient-card-3">
+                            <div class="card-header-summary"><div>ความผิดพลาดของบิลขาย</div></div>
+                            <div class="card-body-summary"><div class="summary-value">0</div><div class="summary-unit">รายการ</div></div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card summary-card-inner gradient-card-4">
+                            <div class="card-header-summary"><div>ภาพรวมความถูกต้อง</div></div>
+                            <div class="card-body-summary"><div class="summary-value">-</div><div class="summary-unit"></div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header" style="background-color: var(--bg-light);">📥📤 การจัดการข้อมูล</div>
+                    <div class="card-body">
+                        <div class="row g-4">
+                            <div class="col-md-6 border-end">
+                                <h5 class="mb-3" style="color: var(--primary-color);">นำเข้าข้อมูลโครงสร้างราคา</h5>
+                                <button class="btn" style="background-color: var(--primary-color); color: #fff;"><i class="bi bi-cloud-upload"></i> นำเข้าไฟล์ (.xls)</button>
+                            </div>
+                            <div class="col-md-6">
+                                <h5 class="text-success mb-3">ส่งออกข้อมูลผลลัพธ์</h5>
+                                <button class="btn btn-success"><i class="bi bi-cloud-download"></i> Export (.xlsx)</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="content-sell-out" role="tabpanel">
+                <h3 class="mb-4" style="color: var(--primary-color);">📈 รายงานสรุปยอดขาย (Sell-out Summary)</h3>
+                
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <ul class="nav nav-tabs" id="sellOutTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="daily-tab" data-bs-toggle="tab" data-bs-target="#sell-out-daily" href="#sell-out-daily" role="tab">รายวัน (31 วัน)</a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#sell-out-monthly" href="#sell-out-monthly" role="tab">รายเดือน (12 เดือน)</a>
+                        </li>
+                    </ul>
+                    
+                    <button class="btn btn-success btn-sm" id="exportSellOutBtn" title="Export รายงานยอดขาย (.xls)">
+                        <i class="bi bi-cloud-download me-1"></i> Export
+                    </button>
+                </div>
+                <div class="tab-content">
+                    <div class="tab-pane fade" id="sell-out-daily" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="mb-4 border-bottom pb-4">
+                                    <h5 class="text-muted mb-3">📊 กราฟยอดขายรายวัน</h5>
+                                    <div style="height: 300px;"><canvas id="dailySalesChart"></canvas></div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-sm table-striped table-hover align-middle sell-out-table">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่</th>
+                                                <th>มูลค่าก่อนส่วนลด</th>
+                                                <th>ส่วนลด</th>
+                                                <th>ยกเว้นภาษี</th> 
+                                                <th>ยอดขายสุทธิ</th>
+                                                <th>ภาษี 7%</th>
+                                                <th>รวมทั้งสิ้น</th>
+                                                </tr>
+                                        </thead>
+                                        <tbody id="daily-table-body"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="sell-out-monthly" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                 <div class="mb-4 border-bottom pb-4">
+                                    <h5 class="text-muted mb-3">📊 กราฟยอดขายรายเดือน</h5>
+                                    <div style="height: 300px;"><canvas id="monthlySalesChart"></canvas></div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-sm table-striped table-hover align-middle sell-out-table">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>เดือน / ปี</th>
+                                                <th>มูลค่าก่อนส่วนลด</th>
+                                                <th>ส่วนลด</th>
+                                                <th>ยกเว้นภาษี</th> 
+                                                <th>ยอดขายสุทธิ</th>
+                                                <th>ภาษี 7%</th>
+                                                <th>รวมทั้งสิ้น</th>
+                                                </tr>
+                                        </thead>
+                                        <tbody id="monthly-table-body"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="content-error-check" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h3 class="mb-0" style="color: var(--primary-color);">🔍 ตรวจสอบความผิดพลาดในการเปิดบิลขาย</h3>
+                    
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary btn-sm btn-primary-import" id="importDataBtn" type="button" data-bs-toggle="modal" data-bs-target="#uploadModal" title="นำเข้าไฟล์รายงาน (Excel)">
+                            <i class="bi bi-cloud-upload me-1"></i> นำเข้าข้อมูล (.xls)
+                        </button>
+                        <button class="btn btn-danger btn-sm" id="exportAllErrorBtn" title="Export รายงานข้อผิดพลาดทั้งหมด (.xls)">
+                            <i class="bi bi-cloud-download me-1"></i> Export ข้อผิดพลาดทั้งหมด
+                        </button>
+                    </div>
+                </div>
+                
+                <ul class="nav nav-tabs mb-4 error-tabs-scroll" id="errorCheckTabs" role="tablist">
+                    <li class="nav-item"><a class="nav-link" id="unsold-value-tab" data-bs-toggle="tab" data-bs-target="#unsold-value-pane" href="#unsold-value-pane"><i class="bi bi-x-circle-fill me-1 text-danger"></i> มูลค่าขาย</a></li>
+                    <li class="nav-item"><a class="nav-link" id="gift-value-tab" data-bs-toggle="tab" data-bs-target="#gift-value-pane" href="#gift-value-pane"><i class="bi bi-x-circle-fill me-1 text-danger"></i> มูลค่าแถม</a></li>
+                    
+                    <li class="nav-item"><a class="nav-link" id="discount-error-tab" data-bs-toggle="tab" data-bs-target="#discount-error-pane" href="#discount-error-pane"><i class="bi bi-x-circle-fill me-1 text-danger"></i> ส่วนลด</a></li>
+                    <li class="nav-item"><a class="nav-link" id="tax-error-tab" data-bs-toggle="tab" data-bs-target="#tax-error-pane" href="#tax-error-pane"><i class="bi bi-x-circle-fill me-1 text-danger"></i> คำนวณภาษีผิดพลาด</a></li>
+                    <li class="nav-item"><a class="nav-link" id="price-unit-error-tab" data-bs-toggle="tab" data-bs-target="#price-unit-error-pane" href="#price-unit-error-pane"><i class="bi bi-x-circle-fill me-1 text-danger"></i> ขายผิดราคาและหน่วยนับ</a></li>
+                    <li class="nav-item"><a class="nav-link" id="total-value-tab" data-bs-toggle="tab" data-bs-target="#total-value-pane" href="#total-value-pane"></i>🔍บิลทั้งหมด</a></li>
+                    
+                    <li class="nav-item"><a class="nav-link" id="additional-check-tab" data-bs-toggle="tab" data-bs-target="#additional-check-pane" href="#additional-check-pane">📋 ตรวจสอบเพิ่มเติม</a></li>
+                    
+                    <li class="nav-item"><a class="nav-link" id="ref-price-tab" data-bs-toggle="tab" data-bs-target="#ref-price-pane" href="#ref-price-pane">📄 โครงสร้างราคาอ้างอิง</a></li>
+                </ul>
+                <div class="tab-content">
+                    
+                    <div class="tab-pane fade" id="unsold-value-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="unsold-value-pane-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th><th class="text-end">ส่วนลด<br>/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th><th class="text-end">ส่วนลด<br>ท้ายบิล</th><th class="text-end">ส่วนลด<br>การตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th><th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="unsold-value-pane-body">
+                                            <tr><td colspan="15" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="gift-value-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="gift-value-pane-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th><th class="text-end">ส่วนลด<br>/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th><th class="text-end">ส่วนลด<br>ท้ายบิล</th><th class="text-end">ส่วนลด<br>การตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th><th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="gift-value-pane-body">
+                                            <tr><td colspan="15" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="total-value-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="total-value-pane-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>ชื่อลูกหนี้</th><th>รหัสสินค้า</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th>
+                                                <th class="text-end">ส่วนลด<br>/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th>
+                                                <th class="text-end">ส่วนลด<br>ท้ายบิล</th>
+                                                <th class="text-end">ส่วนลด<br>การตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th>
+                                                <th class="text-center">ประเภท<br>ภาษี</th>
+                                                <th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="total-value-pane-body">
+                                            <tr><td colspan="18" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div id="pagination-container" class="mt-3 d-flex justify-content-end align-items-center gap-2"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="additional-check-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="additional-check-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่บิล</th>
+                                                <th>เลขที่บิล</th>
+                                                <th>รายการสินค้า</th>
+                                                <th>หน่วยนับ</th>
+                                                <th class="text-end">มูลค่าทั้งสิ้น</th>
+                                                <th class="text-center">ประเภทภาษี</th>
+                                                <th class="text-center">ผลลัพธ์</th>
+                                                <th class="text-center">ตรวจพบ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="additional-check-body">
+                                            <tr><td colspan="8" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div id="additional-check-pagination" class="mt-3 d-flex justify-content-end align-items-center gap-2"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="discount-error-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="discount-error-pane-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th><th class="text-end">ส่วนลด<br>/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th><th class="text-end">ส่วนลด<br>ท้ายบิล</th><th class="text-end">ส่วนลด<br>การตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th><th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="discount-error-pane-body">
+                                            <tr><td colspan="15" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="tax-error-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="tax-error-pane-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th><th class="text-end">ส่วนลด<br>/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th><th class="text-end">ส่วนลด<br>ท้ายบิล</th><th class="text-end">ส่วนลด<br>การตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th><th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tax-error-pane-body">
+                                            <tr><td colspan="15" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="price-unit-error-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="price-unit-error-pane-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th><th class="text-end">ส่วนลด<br>/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th><th class="text-end">ส่วนลด<br>ท้ายบิล</th><th class="text-end">ส่วนลด<br>การตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th><th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="price-unit-error-pane-body">
+                                            <tr><td colspan="15" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="ref-price-pane" role="tabpanel">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="ref-price-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-primary">
+                                                <th>รหัสสินค้า</th>
+                                                <th>ชื่อสินค้า</th>
+                                                <th>หน่วยนับ</th>
+                                                <th class="text-end">ราคาขายต่อหน่วยรวม vat</th>
+                                                <th class="text-end">ราคาต่อหน่วยก่อน Vat</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="ref-price-body">
+                                            <tr><td colspan="5" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div id="ref-price-pagination" class="mt-3 d-flex justify-content-end align-items-center gap-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="content-below-cost" role="tabpanel">
+                <h3 class="mb-4" style="color: var(--danger-color);">📉 รายการบิลขายต่ำกว่าทุน</h3>
+                
+                <ul class="nav nav-tabs mb-3" id="belowCostTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link active" id="bc-summary-tab" data-bs-toggle="tab" href="#bc-summary-pane" role="tab" aria-controls="bc-summary-pane" aria-selected="true">รายเอกสาร</a>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link" id="bc-item-tab" data-bs-toggle="tab" href="#bc-item-pane" role="tab" aria-controls="bc-item-pane" aria-selected="false">ต่อรายการ</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="bc-summary-pane" role="tabpanel" aria-labelledby="bc-summary-tab">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="bc-summary-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-error">
+                                                <th>วันที่เอกสาร</th>
+                                                <th>เลขที่เอกสาร</th>
+                                                <th>ชื่อลูกหนี้</th>
+                                                <th class="text-end">จำนวนรายการสินค้า</th>
+                                                <th class="text-end">ยอดรวมความเสียหาย</th>
+                                                <th class="text-center">สถานะ</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="bc-summary-body">
+                                            <tr><td colspan="6" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="bc-item-pane" role="tabpanel" aria-labelledby="bc-item-tab">
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="bc-item-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle report-table report-table-font">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-error">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>ชื่อลูกหนี้</th><th>รหัสสินค้า</th><th>รายการสินค้า</th><th>หน่วยนับ</th>
+                                                <th class="text-end">ขาย</th><th class="text-end">แถม</th><th class="text-end">ราคา@</th><th class="text-end">ส่วนลด/รายการ</th>
+                                                <th class="text-end">ยอดเงิน</th><th class="text-end">ส่วนลดท้ายบิล</th><th class="text-end">ส่วนลดการตลาด</th>
+                                                <th class="text-end">มูลค่าสินค้า</th><th class="text-end">ภพ.</th><th class="text-end">มูลค่าทั้งสิ้น</th><th class="text-center">ผลลัพธ์</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="bc-item-body"> <tr><td colspan="17" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr> </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-pane fade" id="content-margin" role="tabpanel">
+                <h3 class="mb-4" style="color: #198754;">📈 รายงานอัตรากำไรขั้นต้น (Margin Report)</h3>
+                
+                <ul class="nav nav-tabs mb-3" id="marginTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link active" id="margin-summary-tab" data-bs-toggle="tab" href="#margin-summary-pane" role="tab" aria-controls="margin-summary-pane" aria-selected="true">สรุปภาพรวม</a>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link" id="margin-bill-tab" data-bs-toggle="tab" href="#margin-bill-pane" role="tab" aria-controls="margin-bill-pane" aria-selected="false">รายงานบิลขาย (ต่ำ/ปกติ)</a>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link" id="margin-item-tab" data-bs-toggle="tab" href="#margin-item-pane" role="tab" aria-controls="margin-item-pane" aria-selected="false">อัตรากำไรต่อสินค้า</a>
+                    </li>
+                </ul>
+
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="margin-summary-pane" role="tabpanel" aria-labelledby="margin-summary-tab">
+                        <div class="row g-4 mb-4">
+                            <div class="col-md-4">
+                                <div class="card summary-card-inner gradient-card-4" style="background: linear-gradient(135deg, #198754 0%, #0d6efd 100%) !important;">
+                                    <div class="card-header-summary"><div>กำไรขั้นต้นเฉลี่ย (รวม)</div></div>
+                                    <div class="card-body-summary"><div class="summary-value">15.5%</div><div class="summary-unit"></div></div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card summary-card-inner gradient-card-2">
+                                    <div class="card-header-summary"><div>มูลค่าขายต่ำกว่าเป้า</div></div>
+                                    <div class="card-body-summary"><div class="summary-value">4.2M</div><div class="summary-unit">บาท</div></div>
+                                </div>
+                            </div>
+                             <div class="col-md-4">
+                                <div class="card summary-card-inner gradient-card-3">
+                                    <div class="card-header-summary"><div>จำนวนสินค้า Margin ต่ำ</div></div>
+                                    <div class="card-body-summary"><div class="summary-value">180</div><div class="summary-unit">SKU</div></div>
+                                </div>
+                            </div>
+                        </div>
+                         <div class="card">
+                            <div class="card-body">
+                                <h5 class="text-muted mb-3">📊 แนวโน้มอัตรากำไรขั้นต้นรายเดือน</h5>
+                                <div style="height: 300px;"><canvas id="monthlyMarginChart"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="margin-bill-pane" role="tabpanel" aria-labelledby="margin-bill-tab">
+                         <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="margin-bill-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle margin-report-table">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-success">
+                                                <th>วันที่เอกสาร</th><th>เลขที่เอกสาร</th><th>ชื่อลูกหนี้</th>
+                                                <th class="text-end">ยอดขายรวม</th><th class="text-end">ต้นทุนขายรวม</th>
+                                                <th class="text-end">กำไรขั้นต้น (บาท)</th><th class="text-end">กำไรขั้นต้น (%)</th>
+                                                <th class="text-center">สถานะ Margin</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="margin-bill-body"> 
+                                            <tr><td colspan="8" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="tab-pane fade" id="margin-item-pane" role="tabpanel" aria-labelledby="margin-item-tab">
+                         <div class="card">
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-5 ms-auto"> 
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                            <input type="text" class="form-control table-search-input" data-target-tbody="product-data-body" placeholder="ค้นหา...">
+                                            <button class="btn btn-primary table-search-btn" type="button">ค้นหา</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                                    <table class="table table-striped table-hover table-bordered table-sm align-middle margin-report-table">
+                                        <thead class="sticky-top">
+                                            <tr class="report-header-success">
+                                                <th>รหัสสินค้า</th>
+                                                <th>รายการสินค้า</th>
+                                                <th class="text-end">ต้นทุนต่อหน่วย</th>
+                                                <th class="text-end">ราคาขายต่อหน่วย</th>
+                                                <th class="text-end">กำไรขั้นต้น (%)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="product-data-body"> 
+                                            <tr><td colspan="5" class="text-center text-muted">กำลังโหลดข้อมูล...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+        
+        <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header" style="background-color: var(--primary-color); color: white;">
+                <h5 class="modal-title" id="uploadModalLabel"><i class="bi bi-cloud-upload me-2"></i>นำเข้าข้อมูลรายงานสำหรับตรวจสอบ</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <p class="text-muted">กรุณานำเข้าไฟล์รายงาน Excel อย่างน้อย 1 ไฟล์ เพื่อดำเนินการต่อ (รองรับเฉพาะไฟล์ .xls และ .xlsx)</p>
+                
+                <div class="mb-3">
+                  <label for="fileSalesCash" class="form-label fw-bold">1. รายงานรายละเอียดขายสด</label>
+                  <input class="form-control" type="file" id="fileSalesCash" accept=".xls,.xlsx">
+                </div>
+                
+                <div class="mb-3">
+                  <label for="fileSalesCredit" class="form-label fw-bold">2. รายงานรายละเอียดขายเชื่อ</label>
+                   <input class="form-control" type="file" id="fileSalesCredit" accept=".xls,.xlsx">
+                </div>
+                
+                <div class="mb-3">
+                  <label for="fileRefPrice" class="form-label fw-bold">3. Template ราคาอ้างอิง</label>
+                   <input class="form-control" type="file" id="fileRefPrice" accept=".xls,.xlsx">
+                </div>
+                
+                <div id="uploadStatus" class="mt-3 alert alert-warning p-2 d-none">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    ยังไม่ได้เลือกไฟล์นำเข้าใด ๆ
+                </div>
+
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+                <button type="button" class="btn btn-primary" id="btnProcessFiles">
+                    <i class="bi bi-arrow-right-circle-fill me-1"></i> ถัดไป
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="script.js"></script> 
+</body>
+</html>
