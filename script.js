@@ -29,8 +29,6 @@ document.addEventListener('DOMContentLoaded', function() {
       "(โบว์กี้) นลินี  ชวดสุวรรณ",
       "(แจ๊ส) วิมล มูลเดช",
       "(วิ) สุวิมล กลำภักดิ์",
-      "(อุ๊) ภัควรรณ  ชะลอ",
-      "(ปอ) ศุภรดา  ศุภรพงศ์",
       "(มล) นฤมล ชัยเพชร",
       "(น้ำ) ปาริชาติ ประเสริฐ",
       "(ฝ้าย) นฐา  ณ ระนอง"
@@ -935,4 +933,5 @@ document.addEventListener('DOMContentLoaded', function() {
         const bsTab = new bootstrap.Tab(dailyTabLink);
         bsTab.show();
     }
+
 });
